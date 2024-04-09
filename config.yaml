@@ -6,21 +6,14 @@ computer_assistant:
   device:
     ids:
       - kasama_computer
-    name: kasama_computer
+    name: computer
     sw: 1.0.0
     mf: kasama
     cu: http://192.168.1.113
     model: kasama
 
 switch:
-  - name: computer on
-    state_script: |
-      test -f /tmp/computer
-    on_script: |
-      touch /tmp/computer
-    off_script: |
-      rm /tmp/computer
-  - name: computer microphone
+  - name: microphone
     on_script: |
       default_mic=$(pactl get-default-source)
       pactl set-source-mute ${default_mic} 0
@@ -31,12 +24,19 @@ switch:
       default_mic=$(pactl get-default-source)
       mic_muted=$(pactl get-source-mute "$default_mic" | awk '{print $2}')
       [ "$mic_muted" = "no" ]
+  - name: screen
+    on_script: |
+      xset dpms force on
+    off_script: |
+      xset dpms force off
+    state_script: |
+      xset q | grep -q 'Monitor is On'
 
 number:
-  - name: computer volume
+  - name: volume
     min: 0
     max: 100
-    step: 5
+    step: 1
     unit_of_measurement: "%"
     state_script: |
       default_sink=$(pactl get-default-sink)
@@ -44,3 +44,8 @@ number:
     command_script: |
       default_sink=$(pactl get-default-sink)
       pactl set-sink-volume "$default_sink" "$1"%
+
+button:
+  - name: suspend
+    command_script: |
+      systemctl suspend

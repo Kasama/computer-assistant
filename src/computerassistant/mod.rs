@@ -2,6 +2,7 @@ mod switch;
 mod binary_sensor;
 mod sensor;
 mod number;
+mod button;
 
 use std::ops::{Deref, DerefMut};
 use std::process::Command;
@@ -15,6 +16,7 @@ use crate::homeassistant::State;
 use crate::HomeAssistantDevice;
 
 use self::binary_sensor::BinarySensor;
+use self::button::Button;
 use self::sensor::Sensor;
 use self::switch::Switch;
 use self::number::Number;
@@ -125,6 +127,8 @@ pub struct Config {
     pub switch: Vec<Switch>,
     #[serde(default)]
     pub number: Vec<Number>,
+    #[serde(default)]
+    pub button: Vec<Button>,
 }
 
 pub struct UpdateableHandlers(Vec<Box<dyn Updateable + Send + Sync>>);
@@ -288,6 +292,26 @@ impl Config {
             publishable_handlers.0.push(new_publishable_number);
             let new_updateable_number = Box::new(number.clone());
             updateable_handlers.0.push(new_updateable_number);
+        }
+
+        for button in &self.button {
+            let msg = MessageBuilder::new()
+                .topic(format!(
+                    "{}/button/{}/{}/config", // register in homeassistant's topic
+                    self.computer_assistant.homeassistant_topic,
+                    self.computer_assistant.base_topic,
+                    button.name.as_id()
+                ))
+                .payload(serde_json::to_vec(
+                    &button.ha_config(&self.computer_assistant),
+                )?)
+                .qos(mqtt::QOS_2)
+                .retained(true)
+                .finalize();
+            client.publish(msg).await?;
+
+            let new_button = Box::new(button.clone());
+            updateable_handlers.0.push(new_button);
         }
 
         Ok((updateable_handlers, publishable_handlers))

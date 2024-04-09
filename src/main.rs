@@ -1,6 +1,7 @@
 mod computerassistant;
 mod homeassistant;
 
+use core::time;
 use std::time::Duration;
 
 use clap::Parser;
@@ -42,58 +43,59 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let app = App::parse();
 
-    let create_opts = mqtt::CreateOptionsBuilder::new_v3()
-        .server_uri(&app.hostname)
-        .client_id(CLIENT_ID)
-        .finalize();
+    loop {
+        let create_opts = mqtt::CreateOptionsBuilder::new_v3()
+            .server_uri(&app.hostname)
+            .client_id(CLIENT_ID)
+            .finalize();
+        let mut cli = mqtt::AsyncClient::new(create_opts)?;
 
-    let mut cli = mqtt::AsyncClient::new(create_opts)?;
+        let config_file = std::fs::File::open("config.yaml")?;
+        println!("Opened config file");
+        let mut cfg = computerassistant::Config::read_from(&config_file)?;
+        println!("Read config file: {:?}", cfg);
 
-    let config_file = std::fs::File::open("config.yaml")?;
-    println!("Opened config file");
-    let mut cfg = computerassistant::Config::read_from(&config_file)?;
-    println!("Read config file: {:?}", cfg);
+        let stream = cli.get_stream(25);
 
-    let stream = cli.get_stream(25);
-
-    cfg.connect_mqtt(
-        mqtt::ConnectOptionsBuilder::new_v3()
-            .keep_alive_interval(Duration::from_secs(app.keepalive))
-            .clean_session(false)
-            .user_name(&app.username)
-            .password(app.password.expose_secret()),
-        &cli,
-    )
-    .await?;
-
-    println!("Connected to {}", app.hostname);
-
-    let (updateable_handler, publishable_handler) = cfg.register_mqtt(&cli).await?;
-    println!("Registered with Home Assistant");
-
-    let update_interval =
-        std::time::Duration::from_secs(cfg.computer_assistant.status_pub_interval);
-    let new_cli = cli.clone();
-    let publishing_computer_assistant_cfg = cfg.computer_assistant.clone();
-    let update_states_handle: JoinHandle<Result<(), anyhow::Error>> = tokio::spawn(async move {
-        loop {
-            publishable_handler
-                .publish_state_mqtt(&publishing_computer_assistant_cfg, &new_cli)
-                .await?;
-            tokio::time::sleep(update_interval).await;
-        }
-    });
-
-    updateable_handler
-        .listen_mqtt(&cfg.computer_assistant, &cli, &stream)
+        cfg.connect_mqtt(
+            mqtt::ConnectOptionsBuilder::new_v3()
+                .keep_alive_interval(Duration::from_secs(app.keepalive))
+                .clean_session(false)
+                .user_name(&app.username)
+                .password(app.password.expose_secret()),
+            &cli,
+        )
         .await?;
 
-    update_states_handle.abort();
-    let _ = update_states_handle.await;
+        println!("Connected to {}", app.hostname);
 
-    println!("Disconnected");
+        let (updateable_handler, publishable_handler) = cfg.register_mqtt(&cli).await?;
+        println!("Registered with Home Assistant");
 
-    Ok(())
+        let update_interval =
+            std::time::Duration::from_secs(cfg.computer_assistant.status_pub_interval);
+        let new_cli = cli.clone();
+        let publishing_computer_assistant_cfg = cfg.computer_assistant.clone();
+        let update_states_handle: JoinHandle<Result<(), anyhow::Error>> =
+            tokio::spawn(async move {
+                loop {
+                    publishable_handler
+                        .publish_state_mqtt(&publishing_computer_assistant_cfg, &new_cli)
+                        .await?;
+                    tokio::time::sleep(update_interval).await;
+                }
+            });
+
+        updateable_handler
+            .listen_mqtt(&cfg.computer_assistant, &cli, &stream)
+            .await?;
+
+        update_states_handle.abort();
+        let _ = update_states_handle.await;
+
+        println!("Disconnected");
+        tokio::time::sleep(time::Duration::from_millis(500)).await;
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -129,6 +131,10 @@ fn _default_max_number() -> f64 {
 
 fn _default_step_number() -> f64 {
     1.0
+}
+
+fn _default_payload_press() -> String {
+    "PRESS".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -196,5 +202,21 @@ enum HomeAssistantConfig {
         step: f64,
         #[serde(default)]
         unit_of_measurement: String,
+    },
+    Button {
+        #[serde(rename = "~", default)]
+        base_topic: String,
+        #[serde(rename = "cmd_t")]
+        command_topic: String,
+        #[serde(rename = "dev")]
+        device: HomeAssistantDevice,
+        name: String,
+        #[serde(rename = "uniq_id")]
+        unique_id: String,
+        value_template: Option<String>,
+        #[serde(default = "_default_payload_press")]
+        payload_press: String,
+        #[serde(rename = "avty_t")]
+        availability_topic: String,
     },
 }
