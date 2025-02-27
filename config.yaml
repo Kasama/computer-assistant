@@ -28,6 +28,7 @@ switch:
     on_script: |
       xset dpms force on
     off_script: |
+      /home/roberto/.cargo/bin/dactyl-remote-control --vid 0x4B41 --pid 0x636D disable-mouse-jiggle
       xset dpms force off
     state_script: |
       xset q | grep -q 'Monitor is On'
@@ -37,13 +38,40 @@ number:
     min: 0
     max: 100
     step: 1
-    unit_of_measurement: "%"
+    unit_of_measurement: '%'
     state_script: |
       default_sink=$(pactl get-default-sink)
       pactl get-sink-volume "$default_sink" | awk '{print $5}' | sed 's/%//'
     command_script: |
       default_sink=$(pactl get-default-sink)
       pactl set-sink-volume "$default_sink" "$1"%
+  - name: main screen brightness
+    min: 0
+    max: 100
+    step: 10
+    unit_of_measurement: '%'
+    state_script: |
+      screen_name="DP-2"
+      xrandr --verbose | grep -A 20 $screen_name | ag brightness | cut -d: -f2 | xargs echo "100*" | bc
+    command_script: |
+      screen_name="DP-2"
+      echo "scale=1;$1/100" | bc | xargs -I {} xrandr --output $screen_name --brightness {}
+  - name: second screen brightness
+    min: 0
+    max: 100
+    step: 10
+    unit_of_measurement: '%'
+    state_script: |
+      screen_name="HDMI-1"
+      xrandr --verbose | grep -A 20 $screen_name | ag brightness | cut -d: -f2 | xargs echo "100*" | bc
+    command_script: |
+      screen_name="HDMI-1"
+      echo "scale=1;$1/100" | bc | xargs -I {} xrandr --output $screen_name --brightness {}
+
+binary_sensor:
+  - name: computer on
+    state_script: |
+      true
 
 button:
   - name: suspend

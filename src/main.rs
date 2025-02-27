@@ -33,6 +33,9 @@ struct App {
 
     #[arg(long, env = "MQTT_TOPIC_PREFIX", default_value = "computer-assistant")]
     topic_prefix: String,
+
+    #[arg(long, env = "COMPUTER_ASSISTANT_CONFIG", default_value = "config.yaml")]
+    config: String,
 }
 
 const CLIENT_ID: &str = "computer-assistant";
@@ -50,22 +53,29 @@ async fn main() -> Result<(), anyhow::Error> {
             .finalize();
         let mut cli = mqtt::AsyncClient::new(create_opts)?;
 
-        let config_file = std::fs::File::open("config.yaml")?;
+        let config_file = std::fs::File::open(&app.config)?;
         println!("Opened config file");
         let mut cfg = computerassistant::Config::read_from(&config_file)?;
         println!("Read config file: {:?}", cfg);
 
         let stream = cli.get_stream(25);
 
-        cfg.connect_mqtt(
-            mqtt::ConnectOptionsBuilder::new_v3()
-                .keep_alive_interval(Duration::from_secs(app.keepalive))
-                .clean_session(false)
-                .user_name(&app.username)
-                .password(app.password.expose_secret()),
-            &cli,
-        )
-        .await?;
+        if (cfg
+            .connect_mqtt(
+                mqtt::ConnectOptionsBuilder::new_v3()
+                    .keep_alive_interval(Duration::from_secs(app.keepalive))
+                    .clean_session(false)
+                    .user_name(&app.username)
+                    .password(app.password.expose_secret()),
+                &cli,
+            )
+            .await)
+            .is_err()
+        {
+            println!("Failed to connect to {}. Sleeping for 5s", app.hostname);
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            continue;
+        }
 
         println!("Connected to {}", app.hostname);
 

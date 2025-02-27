@@ -1,0 +1,12 @@
+[Unit]
+Description=Computer Assistant Service
+After=default.target
+Wants=default.target
+
+[Service]
+ExecStart=%h/.cargo/bin/computer-assistant --config %E/computer-assistant/config.yaml
+WorkingDirectory=%h/documents/programming/Rust/computer-assistant/
+Restart=always
+
+[Install]
+WantedBy=default.target
