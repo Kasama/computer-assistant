@@ -1,14 +1,14 @@
-mod switch;
 mod binary_sensor;
-mod sensor;
-mod number;
 mod button;
+mod number;
+mod sensor;
+mod switch;
 
 use std::ops::{Deref, DerefMut};
 use std::process::Command;
 
 use mqtt::{AsyncClient, AsyncReceiver, Message, MessageBuilder};
-use paho_mqtt as mqtt;
+use paho_mqtt::{self as mqtt, QOS_1};
 
 use serde::{Deserialize, Serialize};
 
@@ -17,9 +17,9 @@ use crate::HomeAssistantDevice;
 
 use self::binary_sensor::BinarySensor;
 use self::button::Button;
+use self::number::Number;
 use self::sensor::Sensor;
 use self::switch::Switch;
-use self::number::Number;
 
 pub trait Updateable {
     fn update(&self, topic: &[&str], state: &str) -> anyhow::Result<()>;
@@ -211,6 +211,7 @@ impl Config {
                 MessageBuilder::new()
                     .topic(status_topic)
                     .payload("online")
+                    .retained(true)
                     .finalize(),
             )
             .await?;
